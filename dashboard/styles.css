@@ -187,6 +187,61 @@ button:focus-visible, input:focus-visible, canvas:focus-visible { outline: 2px s
   background: #0e1317;
 }
 
+.event-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: #0e1317;
+}
+
+.event-filter-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  color: #9ba8b1;
+  background: #0c1114;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.event-filter-item:hover {
+  background: #192127;
+  color: #edf4f7;
+}
+
+.event-filter-item input {
+  margin: 0;
+  accent-color: var(--cyan);
+}
+
+.event-filter-item.off {
+  opacity: 0.45;
+}
+
+.event-filter-all {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  color: var(--gold);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.event-filter-all:hover {
+  background: #192127;
+}
+
 .event-list, .ranking-list { margin: 0; padding: 0; list-style: none; }
 .event-list li { padding: 11px 14px; border-bottom: 1px solid #20282e; font-size: 12px; line-height: 1.45; }
 .event-list .event-tick { color: #75838c; margin-right: 8px; }

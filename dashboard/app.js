@@ -18,6 +18,7 @@ const ui = {
   play: document.querySelector("#toggle-play"),
   live: document.querySelector("#live-tick"),
   events: document.querySelector("#event-list"),
+  eventFilters: document.querySelector("#event-filters"),
   rankings: document.querySelector("#ranking-list"),
   killHeading: document.querySelector("#kill-heading"),
   killStats: document.querySelector("#kill-stats"),
@@ -959,27 +960,215 @@ function eventClass(type) {
   return "success";
 }
 
+// 事件类型中文文案（参考 ArenaHeroOnline 的事件流映射）
+const EVENT_LABELS = {
+  UNIT_SELF_DESTRUCTED: "单位自毁",
+  WORKER_CARGO_DROPPED: "工人货物掉落",
+  UNIT_HEAL_SUCCEEDED: "治疗成功",
+  UNIT_HEAL_FAILED: "治疗失败",
+  CORE_HEAL_SUCCEEDED: "治疗成功",
+  CORE_HEAL_FAILED: "治疗失败",
+  UPKEEP_PAID: "支付维护费",
+  CORE_DAMAGED: "Core 遭到攻击",
+  CORE_DESTROYED: "Core 被摧毁",
+  CORE_RESOURCE_OVERFLOW_DESTROYED: "资源溢出损失",
+  CORE_RESOURCES_CAPTURED: "掠夺敌方资源",
+  CORE_ACTION_FAILED: "Core 操作失败",
+  CORE_REPAIR_SUCCEEDED: "护盾修复",
+  CORE_REPAIR_FAILED: "护盾修复失败",
+  CORE_SPAWN_SUCCEEDED: "生产单位",
+  CORE_SPAWN_FAILED: "生产失败",
+  DEPOSIT_SUCCEEDED: "资源入仓",
+  DEPOSIT_FAILED: "资源入仓失败",
+  HARVEST_SUCCEEDED: "采集资源",
+  HARVEST_FAILED: "采集失败",
+  BEACON_HARVEST_BONUS: "信标采集加成",
+  SWEEP_RESOLVED: "先锋横扫",
+  SHOT_HIT: "游侠命中",
+  SHOT_MISSED: "游侠射失",
+  UNIT_DAMAGED: "单位受伤",
+  DESTRUCTION_PARTICIPATION: "确认击毁",
+  UNIT_MOVE_SUCCEEDED: "单位移动",
+  UNIT_MOVE_FAILED: "单位移动失败",
+  CORE_MOVE_STARTED: "Core 开始迁移",
+  CORE_MOVE_PROGRESS: "Core 迁移中",
+  CORE_MOVE_SUCCEEDED: "Core 迁移完成",
+  CORE_MOVE_FAILED: "Core 迁移失败",
+  CORE_MOVE_START_FAILED: "Core 迁移失败",
+  CORE_MOVE_CANCELLED: "Core 取消迁移",
+  BEACON_PICKED_UP: "取得冠军信标",
+  BEACON_DROPPED: "冠军信标掉落",
+  BEACON_DROPPED_ON_DEATH: "冠军信标掉落",
+  BEACON_PICKUP_FAILED: "拾取信标失败",
+  BEACON_DROP_FAILED: "放下信标失败",
+  RESPAWN_DELAYED: "重生延迟",
+  CORE_RESPAWNED: "Core 已重生",
+};
+
+// 失败原因中文文案
+const REASON_LABELS = {
+  ALREADY_CARRIED: "信标已被携带",
+  ATTACK: "遭受攻击",
+  BEACON_NOT_PRESENT: "当前位置没有信标",
+  CARGO_FULL: "工人货舱已满",
+  CELL_UNIT_LIMIT: "目标格已达到容量上限",
+  CORE_ALREADY_MOVING: "Core 已在迁移",
+  CORE_DESTINATION_OCCUPIED: "Core 目标格被占用",
+  CORE_DESTINATION_OUT_OF_BOUNDS: "Core 目标超出坐标范围",
+  CORE_DESTINATION_TERRAIN_BLOCKED: "Core 目标格被地形阻挡",
+  CORE_MOVING: "Core 正在迁移",
+  CORE_NOT_MOVING: "Core 当前没有迁移",
+  CORE_NOT_PRESENT: "Core 不在当前位置",
+  CORE_RESOURCE_FULL: "Core 资源仓已满",
+  DETERMINISTIC_ID_COLLISION: "单位编号生成冲突",
+  HP_FULL: "生命值已满",
+  INSUFFICIENT_RESOURCES: "资源不足",
+  MOVE_BLOCKED_TERRAIN: "前方有障碍",
+  MOVE_CONTESTED: "目标格发生移动争夺",
+  MOVE_DEPENDENCY_FAILED: "前方单位未能离开",
+  MOVE_DESTINATION_OCCUPIED: "目标格被敌方占用",
+  MOVE_OUT_OF_BOUNDS: "移动超出坐标范围",
+  MOVE_SWAP_BLOCKED: "与敌方换位失败",
+  NO_LEGAL_SPAWN: "没有合法重生位置",
+  NOT_AT_OWN_CORE: "单位不在己方 Core 位置",
+  NOT_BEACON_CARRIER: "当前单位没有携带信标",
+  NOT_RESOURCE_CELL: "当前位置没有资源",
+  RESOURCE_DEPLETED: "资源已被其他工人采走",
+  SELF_DESTRUCT: "主动自毁",
+  SHIELD_FULL: "护盾已满",
+  SHOT_MISSED: "射击未命中",
+  UNIT: "敌方单位",
+  UPKEEP_DEFICIT: "维护费不足",
+  WORKER_EMPTY: "工人没有携带资源",
+};
+
+function eventLabel(event) {
+  const type = event.event_type;
+  if (type === "UNIT_DAMAGED" && event.values && Number(event.values.hp) === 0) {
+    return "单位阵亡";
+  }
+  return EVENT_LABELS[type] || type;
+}
+
+function reasonLabel(code) {
+  return REASON_LABELS[code] || code;
+}
+
+// 事件分类与筛选（分类规则参考 ArenaHeroOnline 的事件流）
+const EVENT_CATEGORIES = [
+  ["move", "移动"],
+  ["combat", "战斗"],
+  ["resource", "资源"],
+  ["production", "生产"],
+  ["beacon", "信标"],
+  ["core", "Core"],
+  ["unit", "单位"],
+  ["system", "系统"],
+];
+const EVENT_FILTER_STORAGE_KEY = "arena.eventFilters";
+
+function eventCategory(type) {
+  if (type.startsWith("BEACON_")) return "beacon";
+  if (
+    type.startsWith("SHOT_")
+    || type.startsWith("SWEEP_")
+    || type.startsWith("UNIT_DAMAGED")
+    || type.startsWith("DESTRUCTION_")
+  ) return "combat";
+  if (
+    type.startsWith("HARVEST_")
+    || type.startsWith("DEPOSIT_")
+    || type.startsWith("WORKER_CARGO_")
+    || type === "UPKEEP_PAID"
+    || type === "CORE_RESOURCES_CAPTURED"
+    || type === "CORE_RESOURCE_OVERFLOW_DESTROYED"
+  ) return "resource";
+  if (type.startsWith("CORE_SPAWN_")) return "production";
+  if (type.startsWith("UNIT_MOVE_") || type.startsWith("CORE_MOVE_")) return "move";
+  if (type.startsWith("CORE_") || type === "RESPAWN_DELAYED") return "core";
+  if (type.startsWith("UNIT_")) return "unit";
+  return "system";
+}
+
+function loadEventFilter() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(EVENT_FILTER_STORAGE_KEY) || "");
+    if (Array.isArray(raw)) {
+      const valid = raw.filter((key) => EVENT_CATEGORIES.some(([name]) => name === key));
+      if (valid.length) return new Set(valid);
+    }
+  } catch (error) {
+    // 本地存储不可用或内容损坏时使用默认值
+  }
+  return new Set(EVENT_CATEGORIES.map(([key]) => key));
+}
+
+function saveEventFilter() {
+  try {
+    localStorage.setItem(EVENT_FILTER_STORAGE_KEY, JSON.stringify([...state.eventFilter]));
+  } catch (error) {
+    // 本地存储不可用时忽略
+  }
+}
+
+function initEventFilters() {
+  state.eventFilter = loadEventFilter();
+  ui.eventFilters.replaceChildren();
+  EVENT_CATEGORIES.forEach(([key, label]) => {
+    const item = document.createElement("label");
+    item.className = "event-filter-item";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = state.eventFilter.has(key);
+    input.addEventListener("change", () => {
+      if (input.checked) state.eventFilter.add(key);
+      else state.eventFilter.delete(key);
+      item.classList.toggle("off", !input.checked);
+      saveEventFilter();
+      renderEvents();
+    });
+    item.append(input, document.createTextNode(label));
+    item.classList.toggle("off", !input.checked);
+    ui.eventFilters.append(item);
+  });
+  const allButton = document.createElement("button");
+  allButton.type = "button";
+  allButton.className = "event-filter-all";
+  allButton.textContent = "全选";
+  allButton.addEventListener("click", () => {
+    state.eventFilter = new Set(EVENT_CATEGORIES.map(([key]) => key));
+    saveEventFilter();
+    initEventFilters();
+    renderEvents();
+  });
+  ui.eventFilters.append(allButton);
+}
+
 function renderEvents() {
   const events = state.overview?.state?.events || [];
+  const visible = events.filter((event) => {
+    const filter = state.eventFilter;
+    return !filter || filter.has(eventCategory(event.event_type));
+  });
   ui.events.replaceChildren();
-  if (!events.length) {
+  if (!visible.length) {
     const item = document.createElement("li");
     item.className = "empty-state";
-    item.textContent = "当前 Tick 无事件";
+    item.textContent = events.length ? "当前 Tick 的事件已被筛选隐藏" : "当前 Tick 无事件";
     ui.events.append(item);
     return;
   }
-  [...events].reverse().forEach((event) => {
+  [...visible].reverse().forEach((event) => {
     const item = document.createElement("li");
     const tick = document.createElement("span");
     tick.className = "event-tick";
     tick.textContent = `t${event.tick}`;
     const text = document.createElement("span");
     text.className = eventClass(event.event_type);
-    text.append(event.event_type);
+    text.append(eventLabel(event));
     if (event.reason_code) {
       const reason = document.createElement("span");
-      reason.textContent = ` / ${event.reason_code}`;
+      reason.textContent = ` / ${reasonLabel(event.reason_code)}`;
       text.append(reason);
     }
     if (event.position) {
@@ -1602,6 +1791,8 @@ canvas.addEventListener("touchcancel", () => {
 document.querySelectorAll("[data-unit-filter]").forEach((button) => {
   button.addEventListener("click", () => setUnitFilter(button.dataset.unitFilter));
 });
+// 事件类型筛选初始化
+initEventFilters();
 document.querySelector("#previous-tick").addEventListener("click", () => selectIndex(state.selectedIndex - 1));
 document.querySelector("#next-tick").addEventListener("click", () => selectIndex(state.selectedIndex + 1));
 document.querySelector("#toggle-play").addEventListener("click", togglePlay);
